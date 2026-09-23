@@ -18,6 +18,17 @@ export function createBot(
 ) {
   const bot = new Bot(telegramBotToken);
 
+  // Global error handler for unhandled middleware errors
+  bot.catch(async (err) => {
+    const ctx = err.ctx;
+    console.error(`Error while handling update ${ctx.update.update_id}:`, err.error);
+    try {
+      await ctx.reply(`❌ An error occurred while processing your request: ${err.error instanceof Error ? err.error.message : 'Unknown error'}`);
+    } catch (e) {
+      console.error('Failed to send error message to user (CATCH_ERROR):', e);
+    }
+  });
+
   // Helper to resolve GitHub PAT for a chat
   const getGitHubToken = async (chatId: number): Promise<string | undefined> => {
     const session = await getSession(chatId, kv);
@@ -39,7 +50,13 @@ export function createBot(
       const gh = new GitHubService(ghToken);
       const { buffer, fileName } = await gh.downloadArchive(parsed.owner, parsed.repo, parsed.ref);
 
-      await ctx.reply(`📤 Sending repository zip archive (${(buffer.length / (1024 * 1024)).toFixed(2)} MB)...`);
+      const sizeInMB = buffer.length / (1024 * 1024);
+      if (sizeInMB > 50) {
+        await ctx.reply(`❌ Repository archive is too large (${sizeInMB.toFixed(2)} MB). Telegram Bot API limits document uploads to 50 MB.`);
+        return;
+      }
+
+      await ctx.reply(`📤 Sending repository zip archive (${sizeInMB.toFixed(2)} MB)...`);
 
       await ctx.replyWithDocument(new InputFile(buffer, fileName), {
         caption: `📦 **${parsed.owner}/${parsed.repo}**\n🔗 https://github.com/${parsed.owner}/${parsed.repo}`,
@@ -152,8 +169,9 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
       return;
     }
 
-    const ghToken = await getGitHubToken(ctx.chat.id);
-    if (!ghToken) {
+    const session = await getSession(ctx.chat.id, kv);
+    const userToken = session.githubToken;
+    if (!userToken) {
       await ctx.reply('⚠️ GitHub token missing. Please set your token first using `/settoken <token>`', { parse_mode: 'Markdown' });
       return;
     }
@@ -162,7 +180,7 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
 
     try {
       await ctx.reply('⏳ Creating repository on GitHub...');
-      const gh = new GitHubService(ghToken);
+      const gh = new GitHubService(userToken);
       const repo = await gh.createRepository(repoName, isPrivate);
 
       await setSessionRepo(ctx.chat.id, repo.owner, repo.name, kv);
@@ -198,9 +216,13 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
   // /status
   bot.command('status', async (ctx) => {
     const session = await getSession(ctx.chat.id, kv);
-    const ghToken = await getGitHubToken(ctx.chat.id);
+    const downloadToken = await getGitHubToken(ctx.chat.id);
 
-    const tokenStatus = ghToken ? (session.githubToken ? '✅ Custom Token set' : '✅ Default Server Token') : '❌ Not configured';
+    const tokenStatus = session.githubToken
+      ? '✅ Custom Token set'
+      : downloadToken
+      ? '⚠️ Custom Token not set (Default Server Token for downloads only)'
+      : '❌ Not configured';
     const repoStatus = session.repoOwner && session.repoName ? `\`${session.repoOwner}/${session.repoName}\`` : '❌ Not configured';
     const branchStatus = session.branch ? `\`${session.branch}\`` : '`default branch`';
     const pathStatus = session.subpath ? `\`${session.subpath}\`` : '`root (/)`';
@@ -225,9 +247,9 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
   // Handle uploaded files (documents, zip archives)
   bot.on('message:document', async (ctx) => {
     const session = await getSession(ctx.chat.id, kv);
-    const ghToken = await getGitHubToken(ctx.chat.id);
+    const userToken = session.githubToken;
 
-    if (!ghToken) {
+    if (!userToken) {
       await ctx.reply('⚠️ GitHub token is missing. Set your token using `/settoken <token>`', { parse_mode: 'Markdown' });
       return;
     }
@@ -255,7 +277,7 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
       const arrayBuffer = await response.arrayBuffer();
       const fileBuffer = new Uint8Array(arrayBuffer);
 
-      const gh = new GitHubService(ghToken);
+      const gh = new GitHubService(userToken);
 
       if (isZip) {
         await ctx.reply('📦 Extracting zip contents...');

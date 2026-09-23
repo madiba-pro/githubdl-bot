@@ -36,8 +36,8 @@ export default {
       return await cb(request);
     } catch (err: any) {
       console.error('Worker webhook error:', err);
-      return new Response(JSON.stringify({ error: err.message }), {
-        status: 500,
+      return new Response(JSON.stringify({ ok: true, error: err.message }), {
+        status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
     }

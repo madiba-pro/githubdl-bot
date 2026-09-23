@@ -39,6 +39,6 @@ export default async function handler(req: any, res: any) {
     res.send(responseText);
   } catch (err: any) {
     console.error('Webhook Error:', err);
-    res.status(500).json({ error: err.message || 'Internal Server Error' });
+    res.status(200).json({ ok: true, error: err.message || 'Internal Server Error' });
   }
 }
