@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createBot, escapeMarkdown } from '../src/bot.js';
 import { clearSession, setSessionToken, setSessionRepo } from '../src/config.js';
 import { GitHubService } from '../src/github.js';
+import { getUser, getUserLogs } from '../src/db.js';
+import { MockD1Database } from './db.test.js';
 
 describe('Bot Command Permissions', () => {
   const chatId = 9999;
@@ -257,5 +259,54 @@ describe('Bot Command Permissions', () => {
     });
 
     expect(sentMessages[0].payload.text).toContain('my\\_org/my\\_cool\\_repo');
+  });
+
+  it('records user profile and activity log in D1 database during bot updates', async () => {
+    const mockDb = new MockD1Database();
+    const bot = createBot('123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11', 'ghp_token', undefined, mockDb);
+    bot.botInfo = mockBotInfo;
+
+    const sentMessages: Array<{ method: string; payload: any }> = [];
+    bot.api.config.use((_prev, method, params) => {
+      sentMessages.push({ method, payload: params });
+      return { ok: true, result: true } as any;
+    });
+
+    // Send /start command
+    await bot.handleUpdate({
+      update_id: 8,
+      message: {
+        message_id: 8,
+        date: Math.floor(Date.now() / 1000),
+        chat: { id: chatId, type: 'private', first_name: 'Alice' },
+        from: { id: chatId, is_bot: false, first_name: 'Alice', username: 'alice_dev', language_code: 'en' },
+        text: '/start',
+        entities: [{ type: 'bot_command', offset: 0, length: 6 }],
+      },
+    });
+
+    // Send /settoken command (should mask token)
+    await bot.handleUpdate({
+      update_id: 9,
+      message: {
+        message_id: 9,
+        date: Math.floor(Date.now() / 1000),
+        chat: { id: chatId, type: 'private', first_name: 'Alice' },
+        from: { id: chatId, is_bot: false, first_name: 'Alice', username: 'alice_dev', language_code: 'en' },
+        text: '/settoken ghp_secret_token_123',
+        entities: [{ type: 'bot_command', offset: 0, length: 9 }],
+      },
+    });
+
+    const userRecord = await getUser(mockDb, chatId);
+    expect(userRecord).not.toBeNull();
+    expect(userRecord?.username).toBe('alice_dev');
+    expect(userRecord?.first_name).toBe('Alice');
+
+    const logs = await getUserLogs(mockDb, chatId);
+    expect(logs.length).toBe(2);
+    expect(logs[0].action).toBe('/settoken');
+    expect(logs[0].details).toBe('/settoken [MASKED]');
+    expect(logs[1].action).toBe('/start');
   });
 });

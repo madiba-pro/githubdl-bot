@@ -15,5 +15,12 @@
 			"id": "ac2e766e48c841c5a1727654ec3184bd",
 			"remote": true
 		}
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "github-uploader-db",
+			"database_id": "00000000-0000-0000-0000-000000000000"
+		}
 	]
 }

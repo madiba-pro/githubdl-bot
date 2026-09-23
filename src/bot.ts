@@ -10,6 +10,12 @@ import {
   clearSession,
   KVNamespaceLike,
 } from './config.js';
+import {
+  D1DatabaseLike,
+  initDb,
+  upsertUser,
+  logUserActivity,
+} from './db.js';
 
 export function escapeMarkdown(text: string): string {
   if (!text) return text;
@@ -19,9 +25,55 @@ export function escapeMarkdown(text: string): string {
 export function createBot(
   telegramBotToken: string,
   defaultGithubToken?: string,
-  kv?: KVNamespaceLike
+  kv?: KVNamespaceLike,
+  db?: D1DatabaseLike
 ) {
   const bot = new Bot(telegramBotToken);
+
+  if (db) {
+    initDb(db).catch((err) => console.error('Failed to init D1 database:', err));
+  }
+
+  // Global activity and user tracking middleware
+  bot.use(async (ctx, next) => {
+    if (db && ctx.from) {
+      await upsertUser(db, ctx.from);
+
+      let action: string | null = null;
+      let details: string | undefined = undefined;
+
+      if (ctx.message?.text) {
+        const text = ctx.message.text.trim();
+        if (text.startsWith('/')) {
+          const spaceIdx = text.indexOf(' ');
+          action = spaceIdx > -1 ? text.substring(0, spaceIdx) : text;
+          details = action === '/settoken' ? '/settoken [MASKED]' : text;
+        } else if (text.includes('github.com/')) {
+          action = 'download_link';
+          details = text;
+        } else {
+          action = 'text_message';
+          details = text;
+        }
+      } else if (ctx.message?.document) {
+        const doc = ctx.message.document;
+        const fileName = doc.file_name || 'file';
+        const isZip = fileName.endsWith('.zip') || doc.mime_type === 'application/zip' || doc.mime_type === 'application/x-zip-compressed';
+        action = isZip ? 'upload:zip' : 'upload:document';
+        details = `file: ${fileName}, size: ${doc.file_size || 0} bytes`;
+      }
+
+      if (action) {
+        await logUserActivity(db, {
+          userId: ctx.from.id,
+          username: ctx.from.username,
+          action,
+          details,
+        });
+      }
+    }
+    return next();
+  });
 
   // Global error handler for unhandled middleware errors
   bot.catch(async (err) => {
