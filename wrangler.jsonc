@@ -19,8 +19,9 @@
 	"d1_databases": [
 		{
 			"binding": "DB",
-			"database_name": "github-uploader-db",
-			"database_id": "00000000-0000-0000-0000-000000000000"
+			"database_name": "DB",
+			"database_id": "5482e29c-15c6-4274-b942-46778b9642bd",
+			"remote": true
 		}
 	]
 }
