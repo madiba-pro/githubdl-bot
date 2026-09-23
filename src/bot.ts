@@ -30,13 +30,17 @@ export function createBot(
 ) {
   const bot = new Bot(telegramBotToken);
 
+  let dbInitPromise: Promise<void> | null = null;
   if (db) {
-    initDb(db).catch((err) => console.error('Failed to init D1 database:', err));
+    dbInitPromise = initDb(db).catch((err) => console.error('Failed to init D1 database:', err));
   }
 
   // Global activity and user tracking middleware
   bot.use(async (ctx, next) => {
     if (db && ctx.from) {
+      if (dbInitPromise) {
+        await dbInitPromise;
+      }
       await upsertUser(db, ctx.from);
 
       let action: string | null = null;
