@@ -11,6 +11,11 @@ import {
   KVNamespaceLike,
 } from './config.js';
 
+export function escapeMarkdown(text: string): string {
+  if (!text) return text;
+  return text.replace(/[_*`\[]/g, '\\$&');
+}
+
 export function createBot(
   telegramBotToken: string,
   defaultGithubToken?: string,
@@ -43,8 +48,11 @@ export function createBot(
       return;
     }
 
+    const ownerEsc = escapeMarkdown(parsed.owner);
+    const repoEsc = escapeMarkdown(parsed.repo);
+
     const ghToken = await getGitHubToken(ctx.chat.id);
-    await ctx.reply(`⏳ Downloading repository archive for **${parsed.owner}/${parsed.repo}**...`, { parse_mode: 'Markdown' });
+    await ctx.reply(`⏳ Downloading repository archive for *${ownerEsc}/${repoEsc}*...`, { parse_mode: 'Markdown' });
 
     try {
       const gh = new GitHubService(ghToken);
@@ -59,7 +67,7 @@ export function createBot(
       await ctx.reply(`📤 Sending repository zip archive (${sizeInMB.toFixed(2)} MB)...`);
 
       await ctx.replyWithDocument(new InputFile(buffer, fileName), {
-        caption: `📦 **${parsed.owner}/${parsed.repo}**\n🔗 https://github.com/${parsed.owner}/${parsed.repo}`,
+        caption: `📦 *${ownerEsc}/${repoEsc}*\n🔗 https://github.com/${parsed.owner}/${parsed.repo}`,
         parse_mode: 'Markdown',
       });
     } catch (err: any) {
@@ -70,13 +78,13 @@ export function createBot(
   // /start & /help
   bot.command(['start', 'help'], async (ctx) => {
     const helpText = `
-🤖 **GitHub Uploader & Downloader Telegram Bot**
+🤖 *GitHub Uploader & Downloader Telegram Bot*
 
 I can help you:
-1️⃣ **Upload** single files or extract \`.zip\` archives directly into your GitHub repositories!
-2️⃣ **Download** any GitHub repository as a \`.zip\` file directly to Telegram!
+1️⃣ *Upload* single files or extract \`.zip\` archives directly into your GitHub repositories!
+2️⃣ *Download* any GitHub repository as a \`.zip\` file directly to Telegram!
 
-📋 **Commands:**
+📋 *Commands:*
 • \`/download <url>\` - Download repository zip and send to Telegram (or simply send a \`github.com\` link!)
 • \`/settoken <token>\` - Set your GitHub Personal Access Token
 • \`/setrepo <owner/repo>\` - Set target GitHub repository (e.g. \`octocat/Hello-World\`)
@@ -86,10 +94,10 @@ I can help you:
 • \`/status\` - View current configuration status
 • \`/reset\` - Clear current session settings
 
-📥 **Downloading Repositories:**
+📥 *Downloading Repositories:*
 Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`) or use \`/download <url>\` to get the \`.zip\` archive on Telegram!
 
-📤 **Uploading Files:**
+📤 *Uploading Files:*
 1. Configure your token & repository using \`/settoken\` and \`/setrepo\`.
 2. Send any document or \`.zip\` file to this bot.
     `;
@@ -134,7 +142,9 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
       const gh = new GitHubService(token);
       const user = await gh.verifyToken();
       await setSessionToken(ctx.chat.id, token, kv);
-      await ctx.reply(`✅ Token verified and saved!\nConnected as: **${user.login}** (${user.name || 'No display name'})`, { parse_mode: 'Markdown' });
+      const loginEsc = escapeMarkdown(user.login);
+      const nameEsc = user.name ? escapeMarkdown(user.name) : 'No display name';
+      await ctx.reply(`✅ Token verified and saved!\nConnected as: *${loginEsc}* (${nameEsc})`, { parse_mode: 'Markdown' });
     } catch (err: any) {
       await ctx.reply(`❌ Invalid token: ${err.message || 'Authentication failed'}`);
     }
@@ -155,7 +165,9 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
     }
 
     await setSessionRepo(ctx.chat.id, owner, name, kv);
-    await ctx.reply(`✅ Target repository set to: **${owner}/${name}**`, { parse_mode: 'Markdown' });
+    const ownerEsc = escapeMarkdown(owner);
+    const nameEsc = escapeMarkdown(name);
+    await ctx.reply(`✅ Target repository set to: *${ownerEsc}/${nameEsc}*`, { parse_mode: 'Markdown' });
   });
 
   // /createrepo <name> [private|public]
@@ -184,7 +196,10 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
       const repo = await gh.createRepository(repoName, isPrivate);
 
       await setSessionRepo(ctx.chat.id, repo.owner, repo.name, kv);
-      await ctx.reply(`✅ Repository created successfully!\n\n🔗 Repo: [${repo.owner}/${repo.name}](${repo.htmlUrl})\n📁 Default branch: \`${repo.defaultBranch}\`\n\nIt is now set as your active repository.`, { parse_mode: 'Markdown' });
+      const ownerEsc = escapeMarkdown(repo.owner);
+      const nameEsc = escapeMarkdown(repo.name);
+      const branchEsc = escapeMarkdown(repo.defaultBranch);
+      await ctx.reply(`✅ Repository created successfully!\n\n🔗 Repo: [${ownerEsc}/${nameEsc}](${repo.htmlUrl})\n📁 Default branch: \`${branchEsc}\`\n\nIt is now set as your active repository.`, { parse_mode: 'Markdown' });
     } catch (err: any) {
       await ctx.reply(`❌ Failed to create repository: ${err.message || 'Unknown error'}`);
     }
@@ -199,7 +214,8 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
     }
 
     await setSessionBranch(ctx.chat.id, branch, kv);
-    await ctx.reply(`✅ Target branch set to: \`${branch}\``, { parse_mode: 'Markdown' });
+    const branchEsc = escapeMarkdown(branch);
+    await ctx.reply(`✅ Target branch set to: \`${branchEsc}\``, { parse_mode: 'Markdown' });
   });
 
   // /setpath <subpath>
@@ -207,7 +223,8 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
     const subpath = ctx.match?.trim() || '';
     await setSessionSubpath(ctx.chat.id, subpath, kv);
     if (subpath) {
-      await ctx.reply(`✅ Target folder path set to: \`${subpath}\``, { parse_mode: 'Markdown' });
+      const pathEsc = escapeMarkdown(subpath);
+      await ctx.reply(`✅ Target folder path set to: \`${pathEsc}\``, { parse_mode: 'Markdown' });
     } else {
       await ctx.reply(`✅ Target folder path cleared (root repository).`);
     }
@@ -223,17 +240,19 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
       : downloadToken
       ? '⚠️ Custom Token not set (Default Server Token for downloads only)'
       : '❌ Not configured';
-    const repoStatus = session.repoOwner && session.repoName ? `\`${session.repoOwner}/${session.repoName}\`` : '❌ Not configured';
-    const branchStatus = session.branch ? `\`${session.branch}\`` : '`default branch`';
-    const pathStatus = session.subpath ? `\`${session.subpath}\`` : '`root (/)`';
+    const repoStatus = session.repoOwner && session.repoName
+      ? `\`${escapeMarkdown(session.repoOwner)}/${escapeMarkdown(session.repoName)}\``
+      : '❌ Not configured';
+    const branchStatus = session.branch ? `\`${escapeMarkdown(session.branch)}\`` : '`default branch`';
+    const pathStatus = session.subpath ? `\`${escapeMarkdown(session.subpath)}\`` : '`root (/)`';
 
     const statusMsg = `
-⚙️ **Current Configuration:**
+⚙️ *Current Configuration:*
 
-🔑 **GitHub Token:** ${tokenStatus}
-📦 **Repository:** ${repoStatus}
-🌿 **Branch:** ${branchStatus}
-📂 **Folder Path:** ${pathStatus}
+🔑 *GitHub Token:* ${tokenStatus}
+📦 *Repository:* ${repoStatus}
+🌿 *Branch:* ${branchStatus}
+📂 *Folder Path:* ${pathStatus}
     `;
     await ctx.reply(statusMsg, { parse_mode: 'Markdown' });
   });
@@ -261,9 +280,10 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
 
     const doc = ctx.message.document;
     const fileName = doc.file_name || 'uploaded_file';
+    const fileNameEsc = escapeMarkdown(fileName);
     const isZip = fileName.endsWith('.zip') || doc.mime_type === 'application/zip' || doc.mime_type === 'application/x-zip-compressed';
 
-    await ctx.reply(`⏳ Downloading file \`${fileName}\` (${(doc.file_size ? (doc.file_size / 1024).toFixed(1) : '?')} KB)...`, { parse_mode: 'Markdown' });
+    await ctx.reply(`⏳ Downloading file \`${fileNameEsc}\` (${(doc.file_size ? (doc.file_size / 1024).toFixed(1) : '?')} KB)...`, { parse_mode: 'Markdown' });
 
     try {
       const file = await ctx.getFile();
@@ -279,6 +299,10 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
 
       const gh = new GitHubService(userToken);
 
+      const ownerEsc = escapeMarkdown(session.repoOwner);
+      const repoEsc = escapeMarkdown(session.repoName);
+      const branchEsc = escapeMarkdown(session.branch || 'default');
+
       if (isZip) {
         await ctx.reply('📦 Extracting zip contents...');
         const extractedFiles = extractZip(fileBuffer);
@@ -288,7 +312,7 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
           return;
         }
 
-        await ctx.reply(`🚀 Uploading ${extractedFiles.length} files to GitHub repository **${session.repoOwner}/${session.repoName}**...`, { parse_mode: 'Markdown' });
+        await ctx.reply(`🚀 Uploading ${extractedFiles.length} files to GitHub repository *${ownerEsc}/${repoEsc}*...`, { parse_mode: 'Markdown' });
 
         const result = await gh.commitFiles({
           owner: session.repoOwner,
@@ -300,14 +324,14 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
         });
 
         await ctx.reply(
-          `✅ **Upload Successful!**\n\n` +
-          `📦 **Files committed:** ${result.filesCount}\n` +
-          `🌿 **Branch:** \`${session.branch || 'default'}\`\n` +
+          `✅ *Upload Successful!*\n\n` +
+          `📦 *Files committed:* ${result.filesCount}\n` +
+          `🌿 *Branch:* \`${branchEsc}\`\n` +
           `🔗 [View Commit on GitHub](${result.commitUrl})`,
           { parse_mode: 'Markdown' }
         );
       } else {
-        await ctx.reply(`🚀 Uploading \`${fileName}\` to GitHub repository **${session.repoOwner}/${session.repoName}**...`, { parse_mode: 'Markdown' });
+        await ctx.reply(`🚀 Uploading \`${fileNameEsc}\` to GitHub repository *${ownerEsc}/${repoEsc}*...`, { parse_mode: 'Markdown' });
 
         const result = await gh.commitFiles({
           owner: session.repoOwner,
@@ -324,9 +348,9 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
         });
 
         await ctx.reply(
-          `✅ **File Uploaded Successfully!**\n\n` +
-          `📄 **File:** \`${fileName}\`\n` +
-          `🌿 **Branch:** \`${session.branch || 'default'}\`\n` +
+          `✅ *File Uploaded Successfully!*\n\n` +
+          `📄 *File:* \`${fileNameEsc}\`\n` +
+          `🌿 *Branch:* \`${branchEsc}\`\n` +
           `🔗 [View Commit on GitHub](${result.commitUrl})`,
           { parse_mode: 'Markdown' }
         );

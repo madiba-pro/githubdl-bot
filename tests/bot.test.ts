@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createBot } from '../src/bot.js';
-import { clearSession, setSessionToken } from '../src/config.js';
+import { createBot, escapeMarkdown } from '../src/bot.js';
+import { clearSession, setSessionToken, setSessionRepo } from '../src/config.js';
 import { GitHubService } from '../src/github.js';
 
 describe('Bot Command Permissions', () => {
@@ -192,5 +192,70 @@ describe('Bot Command Permissions', () => {
     // Message 2: Repository archive is too large (51.00 MB)...
     expect(sentMessages[1].payload.text).toContain('Repository archive is too large');
     expect(sentMessages[1].payload.text).toContain('51.00 MB');
+  });
+
+  it('escapes markdown characters correctly in escapeMarkdown utility', () => {
+    expect(escapeMarkdown('user_name_with_underscores')).toBe('user\\_name\\_with\\_underscores');
+    expect(escapeMarkdown('repo*with`special[chars')).toBe('repo\\*with\\`special\\[chars');
+  });
+
+  it('escapes repository names containing underscores when downloading archives', async () => {
+    const bot = createBot('123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11', 'ghp_token');
+    bot.botInfo = mockBotInfo;
+
+    vi.spyOn(GitHubService.prototype, 'downloadArchive').mockResolvedValue({
+      buffer: new Uint8Array(100),
+      fileName: 'my_user-my_repo-main.zip',
+    });
+
+    const sentMessages: Array<{ method: string; payload: any }> = [];
+    bot.api.config.use((_prev, method, params) => {
+      sentMessages.push({ method, payload: params });
+      return { ok: true, result: true } as any;
+    });
+
+    await bot.handleUpdate({
+      update_id: 6,
+      message: {
+        message_id: 6,
+        date: Math.floor(Date.now() / 1000),
+        chat: { id: chatId, type: 'private', first_name: 'Tester' },
+        from: { id: chatId, is_bot: false, first_name: 'Tester' },
+        text: '/download https://github.com/my_user/my_repo',
+        entities: [{ type: 'bot_command', offset: 0, length: 9 }],
+      },
+    });
+
+    expect(sentMessages.length).toBe(3);
+    // Downloading message should escape underscores
+    expect(sentMessages[0].payload.text).toContain('my\\_user/my\\_repo');
+    // Document caption should escape underscores
+    expect(sentMessages[2].method).toBe('sendDocument');
+    expect(sentMessages[2].payload.caption).toContain('my\\_user/my\\_repo');
+  });
+
+  it('escapes user inputs in /setrepo and /status when containing underscores', async () => {
+    const bot = createBot('123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11', 'ghp_token');
+    bot.botInfo = mockBotInfo;
+
+    const sentMessages: Array<{ method: string; payload: any }> = [];
+    bot.api.config.use((_prev, method, params) => {
+      sentMessages.push({ method, payload: params });
+      return { ok: true, result: true } as any;
+    });
+
+    await bot.handleUpdate({
+      update_id: 7,
+      message: {
+        message_id: 7,
+        date: Math.floor(Date.now() / 1000),
+        chat: { id: chatId, type: 'private', first_name: 'Tester' },
+        from: { id: chatId, is_bot: false, first_name: 'Tester' },
+        text: '/setrepo my_org/my_cool_repo',
+        entities: [{ type: 'bot_command', offset: 0, length: 8 }],
+      },
+    });
+
+    expect(sentMessages[0].payload.text).toContain('my\\_org/my\\_cool\\_repo');
   });
 });
