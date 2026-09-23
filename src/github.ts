@@ -11,11 +11,61 @@ export interface CommitResult {
   filesCount: number;
 }
 
+export interface ParsedGitHubUrl {
+  owner: string;
+  repo: string;
+  ref?: string;
+}
+
+/**
+ * Parses a GitHub repository URL into owner, repo, and optional branch/ref.
+ * Example URLs supported:
+ * - https://github.com/owner/repo
+ * - https://github.com/owner/repo.git
+ * - https://github.com/owner/repo/tree/main
+ * - owner/repo
+ */
+export function parseGitHubUrl(urlInput: string): ParsedGitHubUrl | null {
+  const cleanInput = urlInput.trim();
+  if (!cleanInput) return null;
+
+  try {
+    let pathname = cleanInput;
+    if (cleanInput.startsWith('http://') || cleanInput.startsWith('https://')) {
+      const parsedUrl = new URL(cleanInput);
+      if (parsedUrl.hostname !== 'github.com' && parsedUrl.hostname !== 'www.github.com') {
+        return null;
+      }
+      pathname = parsedUrl.pathname;
+    }
+
+    // Strip leading / and trailing .git or slashes
+    pathname = pathname.replace(/^\/+/, '').replace(/\/+$/, '').replace(/\.git$/, '');
+
+    const parts = pathname.split('/');
+    if (parts.length < 2) return null;
+
+    const owner = parts[0];
+    const repo = parts[1];
+
+    if (!owner || !repo) return null;
+
+    let ref: string | undefined = undefined;
+    if (parts.length >= 4 && parts[2] === 'tree') {
+      ref = parts.slice(3).join('/');
+    }
+
+    return { owner, repo, ref };
+  } catch {
+    return null;
+  }
+}
+
 export class GitHubService {
   private octokit: Octokit;
 
-  constructor(token: string) {
-    this.octokit = new Octokit({ auth: token });
+  constructor(token?: string) {
+    this.octokit = new Octokit(token ? { auth: token } : {});
   }
 
   /**
@@ -84,6 +134,28 @@ export class GitHubService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Download repository zip archive as Buffer/Uint8Array.
+   */
+  async downloadArchive(owner: string, repo: string, ref?: string): Promise<{ buffer: Uint8Array; fileName: string }> {
+    let archiveRef = ref;
+    if (!archiveRef) {
+      const { data: repoData } = await this.octokit.repos.get({ owner, repo });
+      archiveRef = repoData.default_branch || 'main';
+    }
+
+    const response = await this.octokit.repos.downloadZipballArchive({
+      owner,
+      repo,
+      ref: archiveRef,
+    });
+
+    const buffer = new Uint8Array(response.data as ArrayBuffer);
+    const fileName = `${owner}-${repo}-${archiveRef}.zip`;
+
+    return { buffer, fileName };
   }
 
   /**
