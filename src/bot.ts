@@ -1,6 +1,6 @@
-import { Bot } from 'grammy';
+import { Bot, InputFile } from 'grammy';
 import { extractZip } from './zip.js';
-import { GitHubService } from './github.js';
+import { GitHubService, parseGitHubUrl } from './github.js';
 import {
   getSession,
   setSessionToken,
@@ -19,14 +19,43 @@ export function createBot(telegramBotToken: string, defaultGithubToken?: string)
     return session.githubToken || defaultGithubToken || process.env.DEFAULT_GITHUB_TOKEN;
   };
 
+  // Helper function to handle downloading repo zip and sending to Telegram
+  const handleDownloadRepo = async (ctx: any, urlInput: string) => {
+    const parsed = parseGitHubUrl(urlInput);
+    if (!parsed) {
+      await ctx.reply('⚠️ Invalid GitHub URL or repository path.\nExample: `https://github.com/octocat/Hello-World`', { parse_mode: 'Markdown' });
+      return;
+    }
+
+    const ghToken = getGitHubToken(ctx.chat.id);
+    await ctx.reply(`⏳ Downloading repository archive for **${parsed.owner}/${parsed.repo}**...`, { parse_mode: 'Markdown' });
+
+    try {
+      const gh = new GitHubService(ghToken);
+      const { buffer, fileName } = await gh.downloadArchive(parsed.owner, parsed.repo, parsed.ref);
+
+      await ctx.reply(`📤 Sending repository zip archive (${(buffer.length / (1024 * 1024)).toFixed(2)} MB)...`);
+
+      await ctx.replyWithDocument(new InputFile(buffer, fileName), {
+        caption: `📦 **${parsed.owner}/${parsed.repo}**\n🔗 https://github.com/${parsed.owner}/${parsed.repo}`,
+        parse_mode: 'Markdown',
+      });
+    } catch (err: any) {
+      await ctx.reply(`❌ Failed to download repository archive: ${err.message || 'Unknown error'}`);
+    }
+  };
+
   // /start & /help
   bot.command(['start', 'help'], async (ctx) => {
     const helpText = `
-🤖 **GitHub Uploader Telegram Bot**
+🤖 **GitHub Uploader & Downloader Telegram Bot**
 
-I can help you upload single files or extract \`.zip\` archives directly into your GitHub repositories!
+I can help you:
+1️⃣ **Upload** single files or extract \`.zip\` archives directly into your GitHub repositories!
+2️⃣ **Download** any GitHub repository as a \`.zip\` file directly to Telegram!
 
 📋 **Commands:**
+• \`/download <url>\` - Download repository zip and send to Telegram (or simply send a \`github.com\` link!)
 • \`/settoken <token>\` - Set your GitHub Personal Access Token
 • \`/setrepo <owner/repo>\` - Set target GitHub repository (e.g. \`octocat/Hello-World\`)
 • \`/createrepo <name> [private|public]\` - Create a new GitHub repository
@@ -35,12 +64,40 @@ I can help you upload single files or extract \`.zip\` archives directly into yo
 • \`/status\` - View current configuration status
 • \`/reset\` - Clear current session settings
 
-📁 **Uploading Files:**
+📥 **Downloading Repositories:**
+Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`) or use \`/download <url>\` to get the \`.zip\` archive on Telegram!
+
+📤 **Uploading Files:**
 1. Configure your token & repository using \`/settoken\` and \`/setrepo\`.
 2. Send any document or \`.zip\` file to this bot.
-3. Zip archives will be automatically extracted and committed to GitHub!
     `;
     await ctx.reply(helpText, { parse_mode: 'Markdown' });
+  });
+
+  // /download <github_url>
+  bot.command('download', async (ctx) => {
+    const urlInput = ctx.match?.trim();
+    if (!urlInput) {
+      await ctx.reply('⚠️ Please provide a GitHub URL.\nUsage: `/download https://github.com/octocat/Hello-World`', { parse_mode: 'Markdown' });
+      return;
+    }
+    await handleDownloadRepo(ctx, urlInput);
+  });
+
+  // Listen for GitHub repository URLs sent in plain text messages
+  bot.on('message:text', async (ctx, next) => {
+    const text = ctx.message.text.trim();
+
+    // If message starts with a command slash, pass to other command handlers
+    if (text.startsWith('/')) {
+      return next();
+    }
+
+    if (text.includes('github.com/')) {
+      await handleDownloadRepo(ctx, text);
+    } else {
+      return next();
+    }
   });
 
   // /settoken <token>

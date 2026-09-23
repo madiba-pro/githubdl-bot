@@ -1,6 +1,8 @@
-# 🚀 GitHub Uploader Telegram Bot
+# 🚀 GitHub Uploader & Downloader Telegram Bot
 
-A high-performance Telegram Bot built with [grammY](https://grammy.dev/) and [@octokit/rest](https://github.com/octokit/rest.js) that allows users to upload single files or automatically extract `.zip` archives directly into GitHub repositories.
+A high-performance Telegram Bot built with [grammY](https://grammy.dev/) and [@octokit/rest](https://github.com/octokit/rest.js) that allows users to:
+1. **Download** any GitHub repository as a `.zip` archive directly to Telegram (simply send a GitHub link!).
+2. **Upload** single files or extract `.zip` archives directly into GitHub repositories.
 
 Deployable to both **Vercel** (Serverless) and **Cloudflare Workers** (Edge), as well as local long-polling for development.
 
@@ -8,7 +10,8 @@ Deployable to both **Vercel** (Serverless) and **Cloudflare Workers** (Edge), as
 
 ## ✨ Features
 
-- 📦 **Zip Archive Extraction**: Automatically unpack `.zip` files in memory and upload all files to GitHub in a single git tree commit.
+- 📥 **Repository Downloading**: Send a GitHub URL (`https://github.com/owner/repo`) or use `/download <url>` to fetch the repository `.zip` archive on Telegram.
+- 📦 **Zip Archive Extraction & Upload**: Automatically unpack `.zip` files in memory and upload all files to GitHub in a single git tree commit.
 - 📄 **Single File Uploads**: Upload any file or document directly to a specified GitHub repository and subfolder.
 - 🛠️ **Repository Management**: Create public or private GitHub repositories directly from Telegram using `/createrepo`.
 - ⚙️ **Custom Configurations**: Easily switch target repositories (`/setrepo`), branches (`/setbranch`), and subdirectories (`/setpath`).
@@ -22,6 +25,7 @@ Deployable to both **Vercel** (Serverless) and **Cloudflare Workers** (Edge), as
 | Command | Description |
 |---|---|
 | `/start`, `/help` | Show bot guide and instructions |
+| `/download <url>` | Download repository zip and send to Telegram |
 | `/settoken <token>` | Set your GitHub Personal Access Token (PAT) |
 | `/setrepo <owner/repo>` | Set active target repository (e.g. `octocat/Hello-World`) |
 | `/createrepo <name> [private\|public]` | Create a new GitHub repo under your account |
