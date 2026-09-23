@@ -152,8 +152,9 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
       return;
     }
 
-    const ghToken = await getGitHubToken(ctx.chat.id);
-    if (!ghToken) {
+    const session = await getSession(ctx.chat.id, kv);
+    const userToken = session.githubToken;
+    if (!userToken) {
       await ctx.reply('⚠️ GitHub token missing. Please set your token first using `/settoken <token>`', { parse_mode: 'Markdown' });
       return;
     }
@@ -162,7 +163,7 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
 
     try {
       await ctx.reply('⏳ Creating repository on GitHub...');
-      const gh = new GitHubService(ghToken);
+      const gh = new GitHubService(userToken);
       const repo = await gh.createRepository(repoName, isPrivate);
 
       await setSessionRepo(ctx.chat.id, repo.owner, repo.name, kv);
@@ -198,9 +199,13 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
   // /status
   bot.command('status', async (ctx) => {
     const session = await getSession(ctx.chat.id, kv);
-    const ghToken = await getGitHubToken(ctx.chat.id);
+    const downloadToken = await getGitHubToken(ctx.chat.id);
 
-    const tokenStatus = ghToken ? (session.githubToken ? '✅ Custom Token set' : '✅ Default Server Token') : '❌ Not configured';
+    const tokenStatus = session.githubToken
+      ? '✅ Custom Token set'
+      : downloadToken
+      ? '⚠️ Custom Token not set (Default Server Token for downloads only)'
+      : '❌ Not configured';
     const repoStatus = session.repoOwner && session.repoName ? `\`${session.repoOwner}/${session.repoName}\`` : '❌ Not configured';
     const branchStatus = session.branch ? `\`${session.branch}\`` : '`default branch`';
     const pathStatus = session.subpath ? `\`${session.subpath}\`` : '`root (/)`';
@@ -225,9 +230,9 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
   // Handle uploaded files (documents, zip archives)
   bot.on('message:document', async (ctx) => {
     const session = await getSession(ctx.chat.id, kv);
-    const ghToken = await getGitHubToken(ctx.chat.id);
+    const userToken = session.githubToken;
 
-    if (!ghToken) {
+    if (!userToken) {
       await ctx.reply('⚠️ GitHub token is missing. Set your token using `/settoken <token>`', { parse_mode: 'Markdown' });
       return;
     }
@@ -255,7 +260,7 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
       const arrayBuffer = await response.arrayBuffer();
       const fileBuffer = new Uint8Array(arrayBuffer);
 
-      const gh = new GitHubService(ghToken);
+      const gh = new GitHubService(userToken);
 
       if (isZip) {
         await ctx.reply('📦 Extracting zip contents...');
