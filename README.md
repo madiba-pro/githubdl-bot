@@ -4,7 +4,7 @@ A high-performance Telegram Bot built with [grammY](https://grammy.dev/) and [@o
 1. **Download** any GitHub repository as a `.zip` archive directly to Telegram (simply send a GitHub link!).
 2. **Upload** single files or extract `.zip` archives directly into GitHub repositories.
 
-Deployable to both **Vercel** (Serverless) and **Cloudflare Workers** (Edge with optional **KV Namespace** support for persistent chat sessions), as well as local long-polling for development.
+Deployable to both **Vercel** (Serverless) and **Cloudflare Workers** (Edge with optional **KV Namespace** support for persistent chat sessions and **Cloudflare D1 Database** for user profile & activity logging), as well as local long-polling for development.
 
 ---
 
@@ -16,6 +16,7 @@ Deployable to both **Vercel** (Serverless) and **Cloudflare Workers** (Edge with
 - 🛠️ **Repository Management**: Create public or private GitHub repositories directly from Telegram using `/createrepo`.
 - ⚙️ **Custom Configurations**: Easily switch target repositories (`/setrepo`), branches (`/setbranch`), and subdirectories (`/setpath`).
 - 🔐 **Token Security**: Support per-user Personal Access Tokens (`/settoken`) or fallback server default token.
+- 🗄️ **Cloudflare D1 Database Integration**: Automatically creates and manages `users` and `activity_logs` tables to store user profiles and track activity logs (commands, uploads, downloads) with sensitive payload masking (e.g., `/settoken` token masking).
 - 💾 **Wrangler KV Session Storage**: Support optional Cloudflare Workers KV (`SESSIONS_KV`) for persistent, multi-container user sessions across webhook invocations.
 - ⚡ **Multi-Platform Deployment**: Ready for Vercel, Cloudflare Workers, or Node.js.
 
@@ -56,7 +57,7 @@ DEFAULT_GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 ## ☁️ Deployment
 
-### Option 1: Cloudflare Workers (with optional Wrangler KV session storage)
+### Option 1: Cloudflare Workers (with Cloudflare D1 Database & KV session storage)
 
 1. Install dependencies & Wrangler CLI:
    ```bash
@@ -68,7 +69,24 @@ DEFAULT_GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
    npx wrangler login
    ```
 
-3. (Optional but recommended) Create a KV namespace for persistent sessions across webhook requests:
+3. (Optional but recommended) Create a Cloudflare D1 Database for storing user profiles and activity logs:
+   ```bash
+   npx wrangler d1 create DB
+   ```
+   Add the generated database binding to your `wrangler.jsonc`:
+   ```json
+   "d1_databases": [
+     {
+       "binding": "DB",
+       "database_name": "DB",
+       "database_id": "your_d1_database_id_here",
+       "remote": true
+     }
+   ]
+   ```
+   *Note: Database tables (`users` and `activity_logs`) are created automatically on initialization.*
+
+4. (Optional but recommended) Create a KV namespace for persistent sessions across webhook requests:
    ```bash
    npx wrangler kv namespace create SESSIONS_KV
    ```
@@ -77,23 +95,24 @@ DEFAULT_GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
    "kv_namespaces": [
      {
        "binding": "SESSIONS_KV",
-       "id": "your_kv_namespace_id_here"
+       "id": "your_kv_namespace_id_here",
+       "remote": true
      }
    ]
    ```
 
-4. Set your environment variables (secrets) in Cloudflare Workers:
+5. Set your environment variables (secrets) in Cloudflare Workers:
    ```bash
    npx wrangler secret put BOT_TOKEN
    npx wrangler secret put WEBHOOK_SECRET # Optional
    ```
 
-5. Deploy to Cloudflare Workers:
+6. Deploy to Cloudflare Workers:
    ```bash
    npm run deploy:cf
    ```
 
-6. Register Telegram Webhook URL:
+7. Register Telegram Webhook URL:
    ```bash
    curl -F "url=https://<your-worker>.<your-subdomain>.workers.dev" \
         -F "secret_token=your_webhook_secret" \
