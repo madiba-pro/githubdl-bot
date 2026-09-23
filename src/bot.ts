@@ -8,14 +8,19 @@ import {
   setSessionBranch,
   setSessionSubpath,
   clearSession,
+  KVNamespaceLike,
 } from './config.js';
 
-export function createBot(telegramBotToken: string, defaultGithubToken?: string) {
+export function createBot(
+  telegramBotToken: string,
+  defaultGithubToken?: string,
+  kv?: KVNamespaceLike
+) {
   const bot = new Bot(telegramBotToken);
 
   // Helper to resolve GitHub PAT for a chat
-  const getGitHubToken = (chatId: number): string | undefined => {
-    const session = getSession(chatId);
+  const getGitHubToken = async (chatId: number): Promise<string | undefined> => {
+    const session = await getSession(chatId, kv);
     return session.githubToken || defaultGithubToken || process.env.DEFAULT_GITHUB_TOKEN;
   };
 
@@ -27,7 +32,7 @@ export function createBot(telegramBotToken: string, defaultGithubToken?: string)
       return;
     }
 
-    const ghToken = getGitHubToken(ctx.chat.id);
+    const ghToken = await getGitHubToken(ctx.chat.id);
     await ctx.reply(`⏳ Downloading repository archive for **${parsed.owner}/${parsed.repo}**...`, { parse_mode: 'Markdown' });
 
     try {
@@ -111,7 +116,7 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
     try {
       const gh = new GitHubService(token);
       const user = await gh.verifyToken();
-      setSessionToken(ctx.chat.id, token);
+      await setSessionToken(ctx.chat.id, token, kv);
       await ctx.reply(`✅ Token verified and saved!\nConnected as: **${user.login}** (${user.name || 'No display name'})`, { parse_mode: 'Markdown' });
     } catch (err: any) {
       await ctx.reply(`❌ Invalid token: ${err.message || 'Authentication failed'}`);
@@ -132,7 +137,7 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
       return;
     }
 
-    setSessionRepo(ctx.chat.id, owner, name);
+    await setSessionRepo(ctx.chat.id, owner, name, kv);
     await ctx.reply(`✅ Target repository set to: **${owner}/${name}**`, { parse_mode: 'Markdown' });
   });
 
@@ -147,7 +152,7 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
       return;
     }
 
-    const ghToken = getGitHubToken(ctx.chat.id);
+    const ghToken = await getGitHubToken(ctx.chat.id);
     if (!ghToken) {
       await ctx.reply('⚠️ GitHub token missing. Please set your token first using `/settoken <token>`', { parse_mode: 'Markdown' });
       return;
@@ -160,7 +165,7 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
       const gh = new GitHubService(ghToken);
       const repo = await gh.createRepository(repoName, isPrivate);
 
-      setSessionRepo(ctx.chat.id, repo.owner, repo.name);
+      await setSessionRepo(ctx.chat.id, repo.owner, repo.name, kv);
       await ctx.reply(`✅ Repository created successfully!\n\n🔗 Repo: [${repo.owner}/${repo.name}](${repo.htmlUrl})\n📁 Default branch: \`${repo.defaultBranch}\`\n\nIt is now set as your active repository.`, { parse_mode: 'Markdown' });
     } catch (err: any) {
       await ctx.reply(`❌ Failed to create repository: ${err.message || 'Unknown error'}`);
@@ -175,14 +180,14 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
       return;
     }
 
-    setSessionBranch(ctx.chat.id, branch);
+    await setSessionBranch(ctx.chat.id, branch, kv);
     await ctx.reply(`✅ Target branch set to: \`${branch}\``, { parse_mode: 'Markdown' });
   });
 
   // /setpath <subpath>
   bot.command('setpath', async (ctx) => {
     const subpath = ctx.match?.trim() || '';
-    setSessionSubpath(ctx.chat.id, subpath);
+    await setSessionSubpath(ctx.chat.id, subpath, kv);
     if (subpath) {
       await ctx.reply(`✅ Target folder path set to: \`${subpath}\``, { parse_mode: 'Markdown' });
     } else {
@@ -192,8 +197,8 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
 
   // /status
   bot.command('status', async (ctx) => {
-    const session = getSession(ctx.chat.id);
-    const ghToken = getGitHubToken(ctx.chat.id);
+    const session = await getSession(ctx.chat.id, kv);
+    const ghToken = await getGitHubToken(ctx.chat.id);
 
     const tokenStatus = ghToken ? (session.githubToken ? '✅ Custom Token set' : '✅ Default Server Token') : '❌ Not configured';
     const repoStatus = session.repoOwner && session.repoName ? `\`${session.repoOwner}/${session.repoName}\`` : '❌ Not configured';
@@ -213,14 +218,14 @@ Send any GitHub repository URL (e.g. \`https://github.com/octocat/Hello-World\`)
 
   // /reset
   bot.command('reset', async (ctx) => {
-    clearSession(ctx.chat.id);
+    await clearSession(ctx.chat.id, kv);
     await ctx.reply('✅ Session settings cleared.');
   });
 
   // Handle uploaded files (documents, zip archives)
   bot.on('message:document', async (ctx) => {
-    const session = getSession(ctx.chat.id);
-    const ghToken = getGitHubToken(ctx.chat.id);
+    const session = await getSession(ctx.chat.id, kv);
+    const ghToken = await getGitHubToken(ctx.chat.id);
 
     if (!ghToken) {
       await ctx.reply('⚠️ GitHub token is missing. Set your token using `/settoken <token>`', { parse_mode: 'Markdown' });

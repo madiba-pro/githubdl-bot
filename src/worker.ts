@@ -1,10 +1,13 @@
 import { webhookCallback } from 'grammy';
 import { createBot } from './bot.js';
+import { KVNamespaceLike } from './config.js';
 
 export interface Env {
   BOT_TOKEN: string;
   WEBHOOK_SECRET?: string;
   DEFAULT_GITHUB_TOKEN?: string;
+  SESSIONS_KV?: KVNamespaceLike;
+  BOT_SESSIONS?: KVNamespaceLike;
 }
 
 export default {
@@ -25,7 +28,8 @@ export default {
       }
     }
 
-    const bot = createBot(env.BOT_TOKEN, env.DEFAULT_GITHUB_TOKEN);
+    const kv = env.SESSIONS_KV || env.BOT_SESSIONS;
+    const bot = createBot(env.BOT_TOKEN, env.DEFAULT_GITHUB_TOKEN, kv);
     const cb = webhookCallback(bot, 'cloudflare-mod');
 
     try {
