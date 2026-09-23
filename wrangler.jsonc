@@ -1,16 +1,19 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "github-uploader-bot",
-  "main": "src/worker.ts",
-  "compatibility_date": "2024-09-23",
-  "compatibility_flags": ["nodejs_compat"],
-  "observability": {
-    "enabled": true
-  },
-  "kv_namespaces": [
-    {
-      "binding": "SESSIONS_KV",
-      "id": "<YOUR_KV_NAMESPACE_ID>"
-    }
-  ]
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "github-uploader-bot",
+	"main": "src/worker.ts",
+	"compatibility_date": "2024-09-23",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"observability": {
+		"enabled": true
+	},
+	"kv_namespaces": [
+		{
+			"binding": "SESSIONS_KV",
+			"id": "ac2e766e48c841c5a1727654ec3184bd",
+			"remote": true
+		}
+	]
 }
